@@ -15,6 +15,9 @@ from .coordinator import OpenHABDataUpdateCoordinator
 from .icons_map import ICONS_MAP, ITEM_TYPE_MAP
 from .utils import strip_ip
 
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 class OpenHABEntity(CoordinatorEntity):
     """Base openHAB entity."""
@@ -156,12 +159,16 @@ class OpenHABEntity(CoordinatorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         new = self.coordinator.data.get(self._id)
-
-        if new != None:
-            self.item = new
-
+        if new is not None:
+            try:
+                # Avoid using != comparison which may not be implemented for all item types
+                self.item = new
+            except (NotImplementedError, AttributeError) as e:
+                _LOGGER.debug(
+                    "Could not update item %s: %s", self._id, str(e)
+                )
         self.async_write_ha_state()
-
+    
     async def async_added_to_hass(self) -> None:
         """Connect to dispatcher listening for entity data notifications."""
         self.async_on_remove(
