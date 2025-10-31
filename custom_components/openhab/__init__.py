@@ -66,6 +66,10 @@ async def async_setup_entry(
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload the config entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
+
+    # Shutdown SSE listener before unloading
+    await coordinator.async_shutdown()
+
     if unload_ok := await hass.config_entries.async_unload_platforms(
         entry, [platform for platform in PLATFORMS if platform in coordinator.platforms]
     ):

@@ -9,7 +9,7 @@ DOMAIN_DATA = f"{DOMAIN}_data"
 VERSION = "0.0.1"
 ATTRIBUTION = "Data provided by openHAB REST API"
 ISSUE_URL = "https://github.com/kubawolanin/ha-openhab/issues"
-DATA_COORDINATOR_UPDATE_INTERVAL = timedelta(seconds=15)
+DATA_COORDINATOR_UPDATE_INTERVAL = timedelta(seconds=60)
 LOGGER: Logger = getLogger(__package__)
 
 # Platforms
