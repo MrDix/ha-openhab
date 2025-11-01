@@ -1,7 +1,21 @@
-# 2024 Update #
-For DeviReg climate there is new Home Assistant Addon
-https://github.com/bob-tm/ha-devireg-mqtt-addon
-No more external servers!
+# 2021: Work by [kubawolanin](https://github.com/kubawolanin/ha-openhab)
+Original Plugin development
+
+# 2023: Work by [hauserbauten](https://github.com/hauserbauten/ha-openhab)
+Fix GitHub issue link [#23](https://github.com/kubawolanin/ha-openhab/issues/23)
+
+# 2024: Work by [bob-tm](https://github.com/bob-tm/ha-openhab)
+* Fix for Home Assistant Version 2024.6 internal API change.   
+  This covers the following tickets: [#22](https://github.com/kubawolanin/ha-openhab/issues/22),[#29](https://github.com/kubawolanin/ha-openhab/issues/29),[#29](https://github.com/kubawolanin/ha-openhab/issues/29),[#30](https://github.com/kubawolanin/ha-openhab/issues/30)
+* Adding devireg thermostat support
+For DeviReg climate there is a [new Home Assistant Addon](https://github.com/bob-tm/ha-devireg-mqtt-addon).  
+For these devices no external openHAB setup is needed anymore.
+
+# 2025: Work by [MrDix](https://github.com/MrDix/ha-openhab)
+* Fix NotImplementedError when comparing DateTimeItem objects  
+  This covers the ticket [#31](https://github.com/kubawolanin/ha-openhab/issues/31)
+* Add SSE support for real-time updates from openHAB  
+  This covers the ticket [#28](https://github.com/kubawolanin/ha-openhab/issues/28)
 
 # openHAB custom integration for Home Assistant
 
@@ -33,7 +47,7 @@ _Component to integrate with [openHAB][openHAB]._
 ## HACS Installation
 
 1. Go to http://homeassistant.local:8123/hacs/integrations
-1. Add `https://github.com/bob-tm/ha-openhab` custom integration repository
+1. Add `https://github.com/MrDix/ha-openhab` custom integration repository
 1. Download the openHAB repository
 1. Go to http://homeassistant.local:8123/config/integrations and add new integration
 1. Choose "openHAB" from the list and follow the config flow steps
