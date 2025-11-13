@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, ITEMS_MAP, SWITCH
+from .const import DOMAIN, ITEMS_MAP, SWITCH, LOGGER
 from .device_classes_map import SWITCH_DEVICE_CLASS_MAP
 from .entity import OpenHABEntity
 
@@ -21,13 +21,31 @@ async def async_setup_entry(
     """Setup sensor platform."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_devices(
-        OpenHABBinarySwitch(hass, coordinator, item)
-        for item in coordinator.data.values()
-        if (item.type_ex == 'devireg_attr_ui_switch') 
-        or ((item.type_ex == False) and (item.type_ in ITEMS_MAP[SWITCH]))
-        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Switch")
-    )
+    # Debug logging
+    total_items = len(coordinator.data.values())
+    group_items = [item for item in coordinator.data.values() if item.type_ == "Group"]
+    switch_groups = [item for item in coordinator.data.values() 
+                     if item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Switch"]
+    
+    LOGGER.info(f"Switch platform: Total items: {total_items}, Groups: {len(group_items)}, Switch groups: {len(switch_groups)}")
+    
+    # Log some group details
+    for item in group_items[:5]:  # First 5 groups
+        group_type = getattr(item, 'groupType', 'NO_GROUPTYPE')
+        LOGGER.info(f"  Group: {item.name}, type: {item.type_}, groupType: {group_type}")
+
+    switches = []
+    for item in coordinator.data.values():
+        if (item.type_ex == 'devireg_attr_ui_switch'):
+            switches.append(OpenHABBinarySwitch(hass, coordinator, item))
+        elif (item.type_ex == False) and (item.type_ in ITEMS_MAP[SWITCH]):
+            switches.append(OpenHABBinarySwitch(hass, coordinator, item))
+        elif item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Switch":
+            LOGGER.info(f"  Adding switch group: {item.name}")
+            switches.append(OpenHABBinarySwitch(hass, coordinator, item))
+    
+    LOGGER.info(f"Switch platform: Adding {len(switches)} switch entities")
+    async_add_devices(switches)
 
 
 class OpenHABBinarySwitch(OpenHABEntity, SwitchEntity):

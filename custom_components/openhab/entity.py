@@ -10,14 +10,10 @@ from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from openhab import items
 
-from .const import ATTRIBUTION, DOMAIN, NAME, VERSION
+from .const import ATTRIBUTION, DOMAIN, NAME, VERSION, LOGGER
 from .coordinator import OpenHABDataUpdateCoordinator
 from .icons_map import ICONS_MAP, ITEM_TYPE_MAP
 from .utils import strip_ip
-
-import logging
-
-_LOGGER = logging.getLogger(__name__)
 
 class OpenHABEntity(CoordinatorEntity):
     """Base openHAB entity."""
@@ -82,9 +78,12 @@ class OpenHABEntity(CoordinatorEntity):
         if self.item.type_ex in ['devireg_attr', 'devireg_attr_ui_sensor', 'devireg_attr_ui_binary_sensor', 'devireg_attr_ui_switch']:
             if self.item.groupNames and len(self.item.groupNames) > 0:
                 devi_unit = self.item.groupNames[0]
+                LOGGER.debug(f"Creating devireg device for {self.item.name}: {devi_unit}")
                 return DeviceInfo(
                     identifiers={(DOMAIN, f"{self._host}_{devi_unit}")}
                 )
+            else:
+                LOGGER.warning(f"Devireg item {self.item.name} has no groupNames - using default device")
         
         # Default device for all other items
         return DeviceInfo(
@@ -167,7 +166,7 @@ class OpenHABEntity(CoordinatorEntity):
                 # Avoid using != comparison which may not be implemented for all item types
                 self.item = new
             except (NotImplementedError, AttributeError) as e:
-                _LOGGER.debug(
+                LOGGER.debug(
                     "Could not update item %s: %s", self._id, str(e)
                 )
         self.async_write_ha_state()
