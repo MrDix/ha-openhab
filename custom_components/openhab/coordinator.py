@@ -176,8 +176,9 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         LOGGER.info("Shutting down openHAB coordinator")
         self._stop_sse = True
         
-        # Cancel debouncer
-        await self._refresh_debouncer.async_shutdown()
+        # Cancel debouncer - async_shutdown() returns None, don't await it
+        if self._refresh_debouncer is not None:
+            self._refresh_debouncer.async_shutdown()
         
         # Cancel SSE listener task
         if self._sse_listener_task and not self._sse_listener_task.done():
