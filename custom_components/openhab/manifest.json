@@ -9,7 +9,7 @@
     "bs4",
     "python-openhab==2.17.1"
   ],
-  "version": "0.2",
+  "version": "0.6.1",
   "config_flow": true,
   "codeowners": [
     "@kubawolanin",
