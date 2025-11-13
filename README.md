@@ -2,11 +2,11 @@
 Original Plugin development
 
 # 2023: Work by [hauserbauten](https://github.com/hauserbauten/ha-openhab)
-Fix GitHub issue link [#23](https://github.com/kubawolanin/ha-openhab/issues/23)
+Fix GitHub issue link ([#23](https://github.com/kubawolanin/ha-openhab/issues/23))
 
 # 2024: Work by [bob-tm](https://github.com/bob-tm/ha-openhab)
 * Fix for Home Assistant Version 2024.6 internal API change.   
-  This covers the following tickets: [#22](https://github.com/kubawolanin/ha-openhab/issues/22),[#29](https://github.com/kubawolanin/ha-openhab/issues/29),[#29](https://github.com/kubawolanin/ha-openhab/issues/29),[#30](https://github.com/kubawolanin/ha-openhab/issues/30)
+  This covers the following tickets: ([#22](https://github.com/kubawolanin/ha-openhab/issues/22),[#29](https://github.com/kubawolanin/ha-openhab/issues/29),[#29](https://github.com/kubawolanin/ha-openhab/issues/29),[#30](https://github.com/kubawolanin/ha-openhab/issues/30))
 * Adding devireg thermostat support
 For DeviReg climate there is a [new Home Assistant Addon](https://github.com/bob-tm/ha-devireg-mqtt-addon).  
 For these devices no external openHAB setup is needed anymore.
