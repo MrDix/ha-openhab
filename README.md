@@ -12,10 +12,12 @@ For DeviReg climate there is a [new Home Assistant Addon](https://github.com/bob
 For these devices no external openHAB setup is needed anymore.
 
 # 2025: Work by [MrDix](https://github.com/MrDix/ha-openhab)
-* Fix NotImplementedError when comparing DateTimeItem objects  
-  This covers the ticket [#31](https://github.com/kubawolanin/ha-openhab/issues/31)
-* Add SSE support for real-time updates from openHAB  
-  This covers the ticket [#28](https://github.com/kubawolanin/ha-openhab/issues/28)
+* Fix NotImplementedError when comparing DateTimeItem objects ([#1](https://github.com/MrDix/ha-openhab/issues/1)/[#31](https://github.com/kubawolanin/ha-openhab/issues/31))  
+  Resolved by changing comparison from `!= None` to `is not None` in entity.py to avoid triggering the `__ne__` operator on DateTimeItem objects
+* Add SSE support for real-time updates from openHAB ([#2](https://github.com/MrDix/ha-openhab/issues/2)/[28](https://github.com/kubawolanin/ha-openhab/issues/28))  
+  Implemented Server-Sent Events listener for real-time state synchronization, reducing delay from 15+ seconds to ~0.5-1 second
+* Fix deprecated constant imports for Home Assistant 2025.10+ compatibility ([#3](https://github.com/MrDix/ha-openhab/issues/3))  
+  Updated media_player.py and light.py to use enum-based constants instead of deprecated string constants
 
 # openHAB custom integration for Home Assistant
 
