@@ -2,8 +2,6 @@
     "name": "openHAB",
     "hacs": "0.2",
     "render_readme": true,
-    "zip_release": true,
-    "filename": "openhab.zip",
     "domains": [
         "binary_sensor",
         "sensor",
