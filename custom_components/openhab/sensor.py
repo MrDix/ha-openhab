@@ -18,10 +18,15 @@ async def async_setup_entry(
     """Setup sensor platform."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
+    # Define group types that have specific platforms
+    specific_group_types = {"Switch", "Rollershutter", "Color", "Dimmer", "Contact", "Player"}
+
     async_add_entities(
         OpenHABSensor(hass, coordinator, item)
         for item in coordinator.data.values()
-        if (item.type_ex == 'devireg_attr_ui_sensor') or ( (item.type_ex == False) and (item.type_ in ITEMS_MAP[SENSOR]))
+        if (item.type_ex == 'devireg_attr_ui_sensor') 
+        or ((item.type_ex == False) and (item.type_ in ITEMS_MAP[SENSOR]))
+        or (item.type_ == "Group" and (not hasattr(item, 'groupType') or item.groupType not in specific_group_types))
     )
 
 

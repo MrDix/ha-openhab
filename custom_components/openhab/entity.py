@@ -78,20 +78,23 @@ class OpenHABEntity(CoordinatorEntity):
         if oh_version is not None:
             version = oh_version
 
+        # Special handling for devireg devices - create separate device per unit
         if self.item.type_ex in ['devireg_attr', 'devireg_attr_ui_sensor', 'devireg_attr_ui_binary_sensor', 'devireg_attr_ui_switch']:
-            devi_unit = self.item.groupNames[0]
-            return DeviceInfo(
-                identifiers   = {(f"{DOMAIN}.{devi_unit}", self._host)}
-            )
-        else:
-            return DeviceInfo(
-                identifiers={(DOMAIN, self._host)},
-                name=f"{NAME} - {self._host}",
-                model=version,
-                manufacturer=NAME,
-                configuration_url=self._base_url,
-                entry_type=DeviceEntryType.SERVICE,
-            )
+            if self.item.groupNames and len(self.item.groupNames) > 0:
+                devi_unit = self.item.groupNames[0]
+                return DeviceInfo(
+                    identifiers={(DOMAIN, f"{self._host}_{devi_unit}")}
+                )
+        
+        # Default device for all other items
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._host)},
+            name=f"{NAME} - {self._host}",
+            model=version,
+            manufacturer=NAME,
+            configuration_url=self._base_url,
+            entry_type=DeviceEntryType.SERVICE,
+        )
 
     @property
     def device_class(self):

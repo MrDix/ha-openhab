@@ -23,6 +23,7 @@ async def async_setup_entry(
         OpenHABCover(hass, coordinator, item)
         for item in coordinator.data.values()
         if item.type_ in ITEMS_MAP[COVER]
+        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Rollershutter")
     )
 
 

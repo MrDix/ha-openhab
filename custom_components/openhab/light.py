@@ -27,11 +27,13 @@ async def async_setup_entry(
         OpenHABLightColor(hass, coordinator, item)
         for item in coordinator.data.values()
         if item.type_ == ITEMS_MAP[LIGHT][0]  # Color
+        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Color")
     )
     async_add_devices(
         OpenHABLightDimmer(hass, coordinator, item)
         for item in coordinator.data.values()
         if item.type_ == ITEMS_MAP[LIGHT][1]  # Dimmer
+        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Dimmer")
     )
 
 
