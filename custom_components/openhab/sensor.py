@@ -23,13 +23,16 @@ async def async_setup_entry(
 
     sensors = []
     for item in coordinator.data.values():
+        # Skip untyped groups - they will be handled as switches
+        if type(item).__name__ == 'GroupItem' and item.type_ is None and (not hasattr(item, 'groupType') or item.groupType is None):
+            continue
+            
         if (item.type_ex == 'devireg_attr_ui_sensor'):
             sensors.append(OpenHABSensor(hass, coordinator, item))
         elif ((item.type_ex == False) and (item.type_ in ITEMS_MAP[SENSOR])):
             sensors.append(OpenHABSensor(hass, coordinator, item))
         elif (item.type_ == "Group" and (not hasattr(item, 'groupType') or item.groupType not in specific_group_types)):
             sensors.append(OpenHABSensor(hass, coordinator, item))
-        # NOTE: Untyped groups (type_ = None) are now handled as switches, not sensors
     
     LOGGER.info(f"Sensor platform: Adding {len(sensors)} sensor entities out of {len(coordinator.data)} total items")
     async_add_entities(sensors)
