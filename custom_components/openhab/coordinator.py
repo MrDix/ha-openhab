@@ -216,7 +216,8 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Track items with None type for debugging
                 if item_type is None:
-                    items_with_none_type.append(f"{item_name} ({type(item).__name__})")
+                    group_type = getattr(item, 'groupType', 'NO_GROUPTYPE')
+                    items_with_none_type.append(f"{item_name} ({type(item).__name__}, groupType={group_type})")
             
             LOGGER.info(f"Item types distribution: {item_types}")
             
