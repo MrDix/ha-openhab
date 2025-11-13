@@ -23,18 +23,24 @@ async def async_setup_entry(
     """Setup sensor platform."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_devices(
-        OpenHABLightColor(hass, coordinator, item)
-        for item in coordinator.data.values()
-        if item.type_ == ITEMS_MAP[LIGHT][0]  # Color
-        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Color")
-    )
-    async_add_devices(
-        OpenHABLightDimmer(hass, coordinator, item)
-        for item in coordinator.data.values()
-        if item.type_ == ITEMS_MAP[LIGHT][1]  # Dimmer
-        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Dimmer")
-    )
+    color_lights = []
+    for item in coordinator.data.values():
+        if item.type_ == ITEMS_MAP[LIGHT][0]:  # Color
+            color_lights.append(OpenHABLightColor(hass, coordinator, item))
+        elif (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Color"):
+            color_lights.append(OpenHABLightColor(hass, coordinator, item))
+    
+    dimmer_lights = []
+    for item in coordinator.data.values():
+        if item.type_ == ITEMS_MAP[LIGHT][1]:  # Dimmer
+            dimmer_lights.append(OpenHABLightDimmer(hass, coordinator, item))
+        elif (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Dimmer"):
+            dimmer_lights.append(OpenHABLightDimmer(hass, coordinator, item))
+    
+    from .const import LOGGER
+    LOGGER.info(f"Light platform: Adding {len(color_lights)} color lights and {len(dimmer_lights)} dimmer lights")
+    async_add_devices(color_lights)
+    async_add_devices(dimmer_lights)
 
 
 class OpenHABLightColor(OpenHABEntity, LightEntity):

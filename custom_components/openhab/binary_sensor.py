@@ -16,11 +16,17 @@ async def async_setup_entry(
 ) -> None:
     """Setup binary_sensor platform."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_devices(
-        OpenHABBinarySensor(hass, coordinator, item)
-        for item in coordinator.data.values()
-        if (item.type_ex == 'devireg_attr_ui_binary_sensor') or ( (item.type_ex == False) and (item.type_ in ITEMS_MAP[BINARY_SENSOR]))
-    )
+    
+    binary_sensors = []
+    for item in coordinator.data.values():
+        if (item.type_ex == 'devireg_attr_ui_binary_sensor'):
+            binary_sensors.append(OpenHABBinarySensor(hass, coordinator, item))
+        elif ((item.type_ex == False) and (item.type_ in ITEMS_MAP[BINARY_SENSOR])):
+            binary_sensors.append(OpenHABBinarySensor(hass, coordinator, item))
+    
+    from .const import LOGGER
+    LOGGER.info(f"Binary Sensor platform: Adding {len(binary_sensors)} binary sensor entities")
+    async_add_devices(binary_sensors)
 
 
 class OpenHABBinarySensor(OpenHABEntity, BinarySensorEntity):

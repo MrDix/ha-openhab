@@ -19,12 +19,16 @@ async def async_setup_entry(
     """Setup sensor platform."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_devices(
-        OpenHABCover(hass, coordinator, item)
-        for item in coordinator.data.values()
-        if item.type_ in ITEMS_MAP[COVER]
-        or (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Rollershutter")
-    )
+    covers = []
+    for item in coordinator.data.values():
+        if item.type_ in ITEMS_MAP[COVER]:
+            covers.append(OpenHABCover(hass, coordinator, item))
+        elif (item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Rollershutter"):
+            covers.append(OpenHABCover(hass, coordinator, item))
+    
+    from .const import LOGGER
+    LOGGER.info(f"Cover platform: Adding {len(covers)} cover entities")
+    async_add_devices(covers)
 
 
 class OpenHABCover(OpenHABEntity, CoverEntity):

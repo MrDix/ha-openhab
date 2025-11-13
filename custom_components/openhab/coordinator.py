@@ -202,6 +202,19 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
             items = await self.api.async_get_items()
             self.is_online = bool(items)
             
+            # Debug logging for item count
+            LOGGER.info(f"Coordinator fetched {len(items)} items from openHAB")
+            
+            # Count items by type
+            item_types = {}
+            for item in items.values():
+                item_type = item.type_
+                if item_type not in item_types:
+                    item_types[item_type] = 0
+                item_types[item_type] += 1
+            
+            LOGGER.info(f"Item types distribution: {item_types}")
+            
             # Start SSE listener after first successful fetch
             if items and not self._sse_started:
                 self._start_sse_after_first_refresh()
