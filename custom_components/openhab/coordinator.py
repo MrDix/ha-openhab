@@ -207,13 +207,21 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
             
             # Count items by type
             item_types = {}
-            for item in items.values():
+            items_with_none_type = []
+            for item_name, item in items.items():
                 item_type = item.type_
                 if item_type not in item_types:
                     item_types[item_type] = 0
                 item_types[item_type] += 1
+                
+                # Track items with None type for debugging
+                if item_type is None:
+                    items_with_none_type.append(f"{item_name} ({type(item).__name__})")
             
             LOGGER.info(f"Item types distribution: {item_types}")
+            
+            if items_with_none_type:
+                LOGGER.warning(f"Items with None type (first 10): {items_with_none_type[:10]}")
             
             # Start SSE listener after first successful fetch
             if items and not self._sse_started:
