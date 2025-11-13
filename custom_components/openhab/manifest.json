@@ -1,9 +1,9 @@
 {
   "domain": "openhab",
   "name": "openHAB",
-  "documentation": "https://github.com/bob-tm/ha-openhab",
+  "documentation": "https://github.com/MrDix/ha-openhab",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/bob-tm/ha-openhab/issues",
+  "issue_tracker": "https://github.com/MrDix/ha-openhab/issues",
   "requirements": [
     "zeroconf",
     "bs4",
@@ -13,6 +13,7 @@
   "config_flow": true,
   "codeowners": [
     "@kubawolanin",
-    "@bob-tm"
+    "@bob-tm",
+    "@MrDix"
   ]
 }
