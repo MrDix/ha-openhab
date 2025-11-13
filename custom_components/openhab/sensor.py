@@ -29,9 +29,7 @@ async def async_setup_entry(
             sensors.append(OpenHABSensor(hass, coordinator, item))
         elif (item.type_ == "Group" and (not hasattr(item, 'groupType') or item.groupType not in specific_group_types)):
             sensors.append(OpenHABSensor(hass, coordinator, item))
-        # Handle untyped GroupItems (type_ = None, no specific groupType)
-        elif (type(item).__name__ == 'GroupItem' and item.type_ is None and (not hasattr(item, 'groupType') or item.groupType is None)):
-            sensors.append(OpenHABSensor(hass, coordinator, item))
+        # NOTE: Untyped groups (type_ = None) are now handled as switches, not sensors
     
     LOGGER.info(f"Sensor platform: Adding {len(sensors)} sensor entities out of {len(coordinator.data)} total items")
     async_add_entities(sensors)

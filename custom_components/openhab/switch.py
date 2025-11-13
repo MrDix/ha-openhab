@@ -43,6 +43,10 @@ async def async_setup_entry(
         elif item.type_ == "Group" and hasattr(item, 'groupType') and item.groupType == "Switch":
             LOGGER.info(f"  Adding switch group: {item.name}")
             switches.append(OpenHABBinarySwitch(hass, coordinator, item))
+        # Treat untyped groups (type_ = None, no groupType) as switches
+        elif type(item).__name__ == 'GroupItem' and item.type_ is None and (not hasattr(item, 'groupType') or item.groupType is None):
+            LOGGER.info(f"  Adding untyped group as switch: {item.name}")
+            switches.append(OpenHABBinarySwitch(hass, coordinator, item))
     
     LOGGER.info(f"Switch platform: Adding {len(switches)} switch entities")
     async_add_devices(switches)
