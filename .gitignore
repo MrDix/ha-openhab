@@ -4,3 +4,8 @@ venv
 .venv
 .coverage
 .idea
+
+# Temporary development files
+/temp/
+*.ps1
+hacs_custom_repos_backup.json
