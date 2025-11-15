@@ -202,6 +202,11 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via library."""
+        # Skip polling if SSE is active - SSE provides real-time updates
+        if self._sse_started:
+            LOGGER.debug("Skipping polling - SSE is active")
+            return self.data if self.data else {}
+        
         try:
             if self.version is None or len(self.version) == 0:
                 self.version = await self.api.async_get_version()
