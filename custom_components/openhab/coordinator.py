@@ -63,6 +63,11 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                 name="openhab_sse_listener"
             )
             LOGGER.info("SSE listener started for real-time updates")
+            
+            # Disable regular polling since SSE provides real-time updates
+            # Keep a long interval as fallback in case SSE disconnects
+            self.update_interval = timedelta(minutes=5)
+            LOGGER.info("Reduced polling interval to 5 minutes (SSE active)")
 
     async def _listen_sse_events(self) -> None:
         """Listen to openHAB SSE events manually using aiohttp."""
