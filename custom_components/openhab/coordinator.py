@@ -33,6 +33,10 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         self._sse_session = None
         self._sse_started = False
         
+        # Track recent commands to avoid processing echo events
+        self._recent_commands = {}  # {item_name: timestamp}
+        self._command_ignore_duration = 2.0  # Ignore state events for 2s after command
+        
         # Debouncer to prevent too many refreshes
         self._refresh_debouncer = Debouncer(
             hass,
@@ -130,15 +134,40 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                                     event_type = event_data.get('type', '')
                                     topic = event_data.get('topic', '')
                                     
-                                    # Log ALL item events for debugging
-                                    if 'Item' in event_type and 'items/' in topic:
-                                        item_name = topic.split('/')[-2] if '/' in topic else 'unknown'
+                                    # Extract item name from topic
+                                    item_name = topic.split('/')[-2] if '/' in topic and len(topic.split('/')) > 2 else None
+                                    
+                                    # Track commands to ignore echo events
+                                    if event_type == 'ItemCommandEvent' and item_name:
+                                        import time
+                                        self._recent_commands[item_name] = time.time()
+                                        LOGGER.debug(f"SSE: Command for {item_name}, will ignore echo events for {self._command_ignore_duration}s")
+                                    
+                                    # Check if we should ignore this event (echo after command)
+                                    should_ignore = False
+                                    if item_name and event_type in ['ItemStateEvent', 'ItemStateUpdatedEvent']:
+                                        import time
+                                        cmd_time = self._recent_commands.get(item_name)
+                                        if cmd_time and (time.time() - cmd_time) < self._command_ignore_duration:
+                                            should_ignore = True
+                                            LOGGER.debug(f"SSE: Ignoring {event_type} for {item_name} (echo after command)")
+                                    
+                                    # Log events that we process
+                                    if 'Item' in event_type and 'items/' in topic and not should_ignore:
                                         LOGGER.debug(f"SSE Event: {event_type} for {item_name}")
                                     
-                                    # Check if it's an item event (any type)
-                                    if 'Item' in event_type and 'items/' in topic:
-                                        # Use debouncer to batch ALL item updates into one refresh
+                                    # Process state changes (not echo events)
+                                    if 'Item' in event_type and 'items/' in topic and not should_ignore:
+                                        # Use debouncer to batch updates
                                         await self._refresh_debouncer.async_call()
+                                    
+                                    # Clean up old command timestamps
+                                    if self._recent_commands:
+                                        import time
+                                        now = time.time()
+                                        expired = [k for k, v in self._recent_commands.items() if (now - v) > self._command_ignore_duration]
+                                        for k in expired:
+                                            del self._recent_commands[k]
                                     
                                     event_data = {}
                                 continue
