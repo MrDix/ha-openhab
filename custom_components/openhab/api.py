@@ -78,11 +78,13 @@ def fetch_all_items_new(oh):
 
 def fetch_all_items(oh):
     import json
+    from .const import LOGGER
 
     dr = {}
     devi_things = get_from_Things(oh)
     items = oh.fetch_all_items()
 
+    devireg_units_found = []
     for k,v in items.items():
         n = type(v).__name__
         v.type_ex = False
@@ -92,6 +94,10 @@ def fetch_all_items(oh):
             x = oh.get_item(k)
             dr[k]=x
             x.type_ex = 'devireg_unit'
+            devireg_units_found.append(k)
+    
+    if devireg_units_found:
+        LOGGER.warning(f"Items classified as devireg_unit (separate devices): {devireg_units_found}")
 
     for k,v in items.items():
         is_devi_attr = False
@@ -116,6 +122,8 @@ def fetch_all_items(oh):
                     v.type_ex = 'devireg_attr_ui_switch'
                 else:
                     v.type_ex = 'devireg_attr'
+                    
+                LOGGER.debug(f"Item {k} classified as {v.type_ex} (parent: {v.parent_device_name})")
 
 
         if is_devi_unit==False:
