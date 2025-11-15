@@ -37,7 +37,7 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         self._refresh_debouncer = Debouncer(
             hass,
             LOGGER,
-            cooldown=0.5,  # Wait 0.5 seconds after last event before refreshing
+            cooldown=1.5,  # Wait 1.5 seconds after last event before refreshing
             immediate=False,
             function=self._async_refresh_debounced,
         )
@@ -130,9 +130,10 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                                     event_type = event_data.get('type', '')
                                     topic = event_data.get('topic', '')
                                     
-                                    # Only log user-initiated commands (not periodic sensor updates)
-                                    if event_type == 'ItemCommandEvent':
-                                        LOGGER.debug("Command received: %s", topic)
+                                    # Log ALL item events for debugging
+                                    if 'Item' in event_type and 'items/' in topic:
+                                        item_name = topic.split('/')[-2] if '/' in topic else 'unknown'
+                                        LOGGER.debug(f"SSE Event: {event_type} for {item_name}")
                                     
                                     # Check if it's an item event (any type)
                                     if 'Item' in event_type and 'items/' in topic:
