@@ -29,6 +29,10 @@ async def async_setup_entry(
     
     LOGGER.info(f"Switch platform: Total items: {total_items}, Groups: {len(group_items)}, Switch groups: {len(switch_groups)}")
     
+    # Count how many Switch items we have
+    switch_items = [item for item in coordinator.data.values() if item.type_ == "Switch"]
+    LOGGER.info(f"Switch items available: {len(switch_items)}")
+    
     # Log some group details
     for item in group_items[:5]:  # First 5 groups
         group_type = getattr(item, 'groupType', 'NO_GROUPTYPE')
@@ -60,17 +64,17 @@ class OpenHABBinarySwitch(OpenHABEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs: dict[str, Any]) -> None:
         """Turn on the switch."""
         await self.hass.async_add_executor_job(self.item.on)
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_turn_off(self, **kwargs: dict[str, Any]) -> None:
         """Turn off the switch."""
         await self.hass.async_add_executor_job(self.item.off)
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_toggle(self, **kwargs: dict[str, Any]) -> None:
-        """Turn off the switch."""
+        """Toggle the switch."""
         await self.hass.async_add_executor_job(self.item.toggle)
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     @property
     def is_on(self) -> bool:

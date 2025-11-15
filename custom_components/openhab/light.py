@@ -67,7 +67,7 @@ class OpenHABLightColor(OpenHABEntity, LightEntity):
             f"/items/{self._id}",
             data=hsv_to_str([hsv[0], hsv[1], 100]),
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -79,7 +79,7 @@ class OpenHABLightColor(OpenHABEntity, LightEntity):
             f"/items/{self._id}",
             data=hsv_to_str([hsv[0], hsv[1], 0]),
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     # @property
     # def color_mode(self) -> str | None:
@@ -123,11 +123,12 @@ class OpenHABLightDimmer(OpenHABEntity, LightEntity):
                 f"/items/{self._id}",
                 str(brightness),
             )
-            return await self.coordinator.async_request_refresh()
+            # Don't request refresh - SSE will provide the update
+            return
         await self.hass.async_add_executor_job(
             self.coordinator.api.openhab.req_post, f"/items/{self._id}", "ON"
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -136,4 +137,4 @@ class OpenHABLightDimmer(OpenHABEntity, LightEntity):
         await self.hass.async_add_executor_job(
             self.coordinator.api.openhab.req_post, f"/items/{self._id}", "OFF"
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update

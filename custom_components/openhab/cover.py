@@ -54,7 +54,7 @@ class OpenHABCover(OpenHABEntity, CoverEntity):
             f"/items/{self._id}",
             str(kwargs[ATTR_POSITION]),
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_open_cover(self, **kwargs: dict[str, Any]) -> None:
         """Open the cover."""
@@ -63,7 +63,7 @@ class OpenHABCover(OpenHABEntity, CoverEntity):
         await self.hass.async_add_executor_job(
             self.coordinator.api.openhab.req_post, f"/items/{self._id}", "UP"
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_close_cover(self, **kwargs: dict[str, Any]) -> None:
         """Close cover."""
@@ -72,16 +72,16 @@ class OpenHABCover(OpenHABEntity, CoverEntity):
         await self.hass.async_add_executor_job(
             self.coordinator.api.openhab.req_post, f"/items/{self._id}", "DOWN"
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     async def async_stop_cover(self, **kwargs: dict[str, Any]) -> None:
-        """Close cover."""
+        """Stop cover."""
         if not self.item:
             return
         await self.hass.async_add_executor_job(
             self.coordinator.api.openhab.req_post, f"/items/{self._id}", "STOP"
         )
-        await self.coordinator.async_request_refresh()
+        # Don't request refresh - SSE will provide the update
 
     @property
     def is_closed(self) -> bool:
