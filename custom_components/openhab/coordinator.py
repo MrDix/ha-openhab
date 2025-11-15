@@ -42,6 +42,7 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
             function=self._async_refresh_debounced,
         )
 
+        # Start with normal polling, will be disabled when SSE connects
         super().__init__(
             hass,
             logger=LOGGER,
@@ -64,10 +65,11 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
             )
             LOGGER.info("SSE listener started for real-time updates")
             
-            # Disable regular polling since SSE provides real-time updates
-            # Keep a long interval as fallback in case SSE disconnects
-            self.update_interval = timedelta(minutes=5)
-            LOGGER.info("Reduced polling interval to 5 minutes (SSE active)")
+            # Disable polling completely - SSE provides all updates
+            # Set update_method to None to stop the coordinator from polling
+            self.update_method = None
+            self.update_interval = None
+            LOGGER.info("Disabled polling - using SSE for all updates")
 
     async def _listen_sse_events(self) -> None:
         """Listen to openHAB SSE events manually using aiohttp."""
