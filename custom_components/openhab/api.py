@@ -107,23 +107,28 @@ def fetch_all_items(oh):
         if k in dr:
             is_devi_unit = True
 
+        # Only process as devireg_attr if the parent group is actually a devireg unit
         if len(v.groupNames)>0:
-            if v.groupNames[0] in dr:
-                is_devi_attr = True
-                v.parent_device_name = v.groupNames[0]
+            parent_group = v.groupNames[0]
+            if parent_group in dr:
+                # Check if parent is actually a devireg unit (not just any group)
+                parent_item = dr[parent_group]
+                if hasattr(parent_item, 'type_ex') and parent_item.type_ex == 'devireg_unit':
+                    is_devi_attr = True
+                    v.parent_device_name = parent_group
 
-                if v.label in [
-                        'State',  'Mode', 'Room temperature', 'Floor temperature',
-                        'Heater on time in last 7 days', 'Heater on time in last 30 days', 'Total heater on time']:
-                    v.type_ex = 'devireg_attr_ui_sensor'
-                elif v.label in ['Heating state', 'Window open']:
-                    v.type_ex = 'devireg_attr_ui_binary_sensor'
-                elif v.label in ['Enable minimum floor temperature', 'Open window detection', 'Screen lock', 'Temperature forecasting']:
-                    v.type_ex = 'devireg_attr_ui_switch'
-                else:
-                    v.type_ex = 'devireg_attr'
-                    
-                LOGGER.debug(f"Item {k} classified as {v.type_ex} (parent: {v.parent_device_name})")
+                    if v.label in [
+                            'State',  'Mode', 'Room temperature', 'Floor temperature',
+                            'Heater on time in last 7 days', 'Heater on time in last 30 days', 'Total heater on time']:
+                        v.type_ex = 'devireg_attr_ui_sensor'
+                    elif v.label in ['Heating state', 'Window open']:
+                        v.type_ex = 'devireg_attr_ui_binary_sensor'
+                    elif v.label in ['Enable minimum floor temperature', 'Open window detection', 'Screen lock', 'Temperature forecasting']:
+                        v.type_ex = 'devireg_attr_ui_switch'
+                    else:
+                        v.type_ex = 'devireg_attr'
+                        
+                    LOGGER.debug(f"Item {k} classified as {v.type_ex} (parent: {v.parent_device_name})")
 
 
         if is_devi_unit==False:
