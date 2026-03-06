@@ -84,7 +84,7 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     # ------------------------------------------------------------------
-    # SSE startup
+    # SSE startup / polling management
     # ------------------------------------------------------------------
 
     def _start_sse_after_first_refresh(self) -> None:
@@ -101,6 +101,25 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                 name="openhab_sse_listener",
             )
             LOGGER.info("SSE listener task created")
+
+    def _enable_polling(self) -> None:
+        """Re-enable periodic polling as a fallback while SSE is not connected.
+
+        Called from SSE error paths (non-200 response, connection exception) so
+        that entities are kept up-to-date while the SSE listener retries.
+        Restoring update_interval alone is not enough - we also trigger an
+        immediate refresh so the HA scheduler re-arms itself at the end of that
+        refresh cycle.
+        """
+        if self.update_interval is None:
+            self.update_interval = DATA_COORDINATOR_UPDATE_INTERVAL
+            LOGGER.info(
+                "SSE unavailable - polling re-enabled at %s interval",
+                DATA_COORDINATOR_UPDATE_INTERVAL,
+            )
+            # async_request_refresh() re-schedules the next poll at the end of
+            # _async_refresh(), which honours the restored update_interval.
+            self.hass.async_create_task(self.async_request_refresh())
 
     # ------------------------------------------------------------------
     # Direct state injection
@@ -197,6 +216,8 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                             response.status,
                             error_text,
                         )
+                        # Re-enable polling so entities are updated while retrying.
+                        self._enable_polling()
                         await asyncio.sleep(retry_delay)
                         continue
 
@@ -262,9 +283,32 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                         err,
                         retry_delay,
                     )
+                    # Re-enable polling so entities are updated while retrying.
+                    self._enable_polling()
                     await asyncio.sleep(retry_delay)
 
         LOGGER.info("SSE listener stopped")
+
+    # ------------------------------------------------------------------
+    # SSE event processing
+    # ------------------------------------------------------------------
+
+    def _prune_recent_commands(self) -> None:
+        """Remove expired entries from _recent_commands.
+
+        Called at every exit point of _process_sse_event() so timestamps never
+        accumulate under high-echo-traffic conditions.
+        """
+        if not self._recent_commands:
+            return
+        now = time.time()
+        expired = [
+            k
+            for k, v in self._recent_commands.items()
+            if (now - v) > self._command_ignore_duration
+        ]
+        for k in expired:
+            del self._recent_commands[k]
 
     async def _process_sse_event(self, event_data: dict) -> None:
         """Process a single parsed SSE event from openHAB.
@@ -300,6 +344,7 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                     item_name,
                     event_type,
                 )
+                self._prune_recent_commands()
                 return
 
             payload_str = event_data.get("payload", "")
@@ -315,16 +360,7 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 await self._refresh_debouncer.async_call()
 
-        # Housekeeping: remove expired command timestamps
-        if self._recent_commands:
-            now = time.time()
-            expired = [
-                k
-                for k, v in self._recent_commands.items()
-                if (now - v) > self._command_ignore_duration
-            ]
-            for k in expired:
-                del self._recent_commands[k]
+        self._prune_recent_commands()
 
     # ------------------------------------------------------------------
     # Shutdown
