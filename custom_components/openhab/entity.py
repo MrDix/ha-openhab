@@ -6,6 +6,7 @@ from typing import Any, List
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.util.slugify import slugify
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from openhab import items
@@ -43,7 +44,12 @@ class OpenHABEntity(CoordinatorEntity):
         #self._nameid_prefix = f"{self._host}_"
         self._nameid_prefix = f"oh_"
 
-        self.entity_id = f"{DOMAIN}.{self._nameid_prefix}{self.item.name}"
+        # Slugify the item name so the generated entity_id is always a valid
+        # HA identifier (lowercase, no spaces, no special characters).
+        # HA 2026.2+ enforces strict entity ID validation and rejects raw
+        # OpenHAB item names that contain uppercase letters or other characters
+        # not permitted in entity IDs.
+        self.entity_id = f"{DOMAIN}.{self._nameid_prefix}{slugify(self.item.name)}"
 
         if self.item.unit_of_measure:
             self._attr_native_unit_of_measurement = str(self.item.unit_of_measure)
@@ -64,7 +70,12 @@ class OpenHABEntity(CoordinatorEntity):
 
     @property
     def unique_id(self) -> str | None:
-        """Return a unique ID to use for this entity."""
+        """Return a unique ID to use for this entity.
+
+        Uses the original (un-slugified) item name so the entity can always
+        be looked up unambiguously in the HA entity registry, regardless of
+        how the entity_id was slugified.
+        """
         return f"{DOMAIN}.{self._nameid_prefix}{self.item.name}"
 
     @property
