@@ -32,21 +32,22 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         self._stop_sse = False
         self._sse_session = None
         self._sse_started = False
-        
+
         # Track recent commands to avoid processing echo events
         self._recent_commands = {}  # {item_name: timestamp}
         self._command_ignore_duration = 2.0  # Ignore state events for 2s after command
-        
-        # Debouncer to prevent too many refreshes
+
+        # Fallback debouncer: only used when direct SSE state update fails
+        # (unknown item, parse error) to trigger a full API refresh
         self._refresh_debouncer = Debouncer(
             hass,
             LOGGER,
-            cooldown=1.5,  # Wait 1.5 seconds after last event before refreshing
+            cooldown=2.0,
             immediate=False,
             function=self._async_refresh_debounced,
         )
 
-        # Start with normal polling, will be disabled when SSE connects
+        # Start with normal polling; disabled once SSE connects successfully
         super().__init__(
             hass,
             logger=LOGGER,
@@ -55,221 +56,309 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_refresh_debounced(self) -> None:
-        """Debounced refresh function."""
+        """Debounced full API refresh (fallback path only)."""
         await self.async_request_refresh()
+
+    # ------------------------------------------------------------------
+    # SSE startup
+    # ------------------------------------------------------------------
 
     def _start_sse_after_first_refresh(self) -> None:
         """Start SSE listener after first successful refresh."""
         if not self._sse_started and self.api._base_url:
             self._sse_started = True
-            # Create task but don't await it - runs in background
             self._sse_listener_task = self.hass.async_create_background_task(
                 self._listen_sse_events(),
-                name="openhab_sse_listener"
+                name="openhab_sse_listener",
             )
             LOGGER.info("SSE listener started for real-time updates")
-            
-            # Disable polling completely - SSE provides all updates
-            # Set update_method to None to stop the coordinator from polling
+
+            # Disable polling - SSE handles all state updates
             self.update_method = None
             self.update_interval = None
-            LOGGER.info("Disabled polling - using SSE for all updates")
+            LOGGER.info("Polling disabled - SSE is the sole update source")
+
+    # ------------------------------------------------------------------
+    # Direct state injection (Option B core)
+    # ------------------------------------------------------------------
+
+    def _update_item_from_sse_payload(self, item_name: str, payload_str: str) -> bool:
+        """Parse SSE event payload and update the item state in self.data directly.
+
+        Returns True when the item was found and updated successfully.
+        No API call is made; self.data is mutated in-place and callers
+        must follow up with async_set_updated_data(self.data).
+        """
+        if not self.data or item_name not in self.data:
+            return False
+
+        try:
+            payload = json.loads(payload_str)
+            raw_value = payload.get("value")
+            if raw_value is None:
+                return False
+
+            item = self.data[item_name]
+            item._raw_state = raw_value
+
+            try:
+                # Each Item subclass implements _parse_value() to convert the
+                # raw string to the typed _state representation (OnOffType,
+                # float, datetime, …).
+                item._state = item._parse_value(raw_value)
+            except (NotImplementedError, AttributeError, ValueError, TypeError):
+                # For item types without _parse_value (e.g. bare GroupItem),
+                # store the raw string so at least something is updated.
+                item._state = raw_value
+
+            LOGGER.debug("SSE direct update: %s = %s", item_name, raw_value)
+            return True
+
+        except Exception as err:  # noqa: BLE001
+            LOGGER.debug(
+                "Could not parse SSE payload for item %s: %s",
+                item_name,
+                err,
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # SSE listener
+    # ------------------------------------------------------------------
 
     async def _listen_sse_events(self) -> None:
-        """Listen to openHAB SSE events manually using aiohttp."""
+        """Listen to openHAB SSE events and update entity states in real-time."""
         sse_url = f"{self.api._rest_url}/events"
-        
-        # Prepare headers
+
         headers = {}
         if self.api._auth_type == "token" and self.api._auth_token:
             headers["X-OPENHAB-TOKEN"] = self.api._auth_token
-        
+
         retry_delay = 5
-        
+        first_connect = True
+
         while not self._stop_sse:
             try:
-                # Create auth if using basic auth
                 auth = None
                 if self.api._auth_type == "OAuth2" and self.api._username:
                     auth = aiohttp.BasicAuth(self.api._username, self.api._password)
-                
-                # Create session if needed
+
                 if not self._sse_session:
                     self._sse_session = aiohttp.ClientSession()
-                
+
                 LOGGER.debug("Connecting to SSE endpoint: %s", sse_url)
-                
+
                 async with self._sse_session.get(
                     sse_url,
                     headers=headers,
                     auth=auth,
-                    timeout=aiohttp.ClientTimeout(total=None, sock_read=300)
+                    timeout=aiohttp.ClientTimeout(total=None, sock_read=300),
                 ) as response:
-                    
+
                     if response.status != 200:
                         error_text = await response.text()
                         LOGGER.error(
                             "SSE connection failed with status %s: %s",
                             response.status,
-                            error_text
+                            error_text,
                         )
                         await asyncio.sleep(retry_delay)
                         continue
-                    
+
                     LOGGER.info("SSE connection established")
-                    
-                    # Read SSE stream line by line
-                    event_data = {}
-                    
+
+                    # After a reconnect, fetch fresh data from the API to catch
+                    # any state changes that occurred while SSE was disconnected.
+                    if not first_connect:
+                        LOGGER.info("SSE reconnected - triggering full refresh")
+                        await self._refresh_debouncer.async_call()
+                    first_connect = False
+
+                    event_data: dict = {}
+
                     async for line in response.content:
                         if self._stop_sse:
                             break
-                        
+
                         try:
-                            decoded = line.decode('utf-8').strip()
-                            
+                            decoded = line.decode("utf-8").strip()
+
                             if not decoded:
-                                # Empty line marks end of event
+                                # Empty line = end of one SSE event block
                                 if event_data:
-                                    event_type = event_data.get('type', '')
-                                    topic = event_data.get('topic', '')
-                                    
-                                    # Extract item name from topic
-                                    item_name = topic.split('/')[-2] if '/' in topic and len(topic.split('/')) > 2 else None
-                                    
-                                    # Track commands to ignore echo events
-                                    if event_type == 'ItemCommandEvent' and item_name:
-                                        import time
-                                        self._recent_commands[item_name] = time.time()
-                                        LOGGER.debug(f"SSE: Command for {item_name}, will ignore echo events for {self._command_ignore_duration}s")
-                                    
-                                    # Check if we should ignore this event (echo after command)
-                                    should_ignore = False
-                                    if item_name and event_type in ['ItemStateEvent', 'ItemStateUpdatedEvent']:
-                                        import time
-                                        cmd_time = self._recent_commands.get(item_name)
-                                        if cmd_time and (time.time() - cmd_time) < self._command_ignore_duration:
-                                            should_ignore = True
-                                            LOGGER.debug(f"SSE: Ignoring {event_type} for {item_name} (echo after command)")
-                                    
-                                    # Log events that we process
-                                    if 'Item' in event_type and 'items/' in topic and not should_ignore:
-                                        LOGGER.debug(f"SSE Event: {event_type} for {item_name}")
-                                    
-                                    # Process state changes (not echo events)
-                                    if 'Item' in event_type and 'items/' in topic and not should_ignore:
-                                        # Use debouncer to batch updates
-                                        await self._refresh_debouncer.async_call()
-                                    
-                                    # Clean up old command timestamps
-                                    if self._recent_commands:
-                                        import time
-                                        now = time.time()
-                                        expired = [k for k, v in self._recent_commands.items() if (now - v) > self._command_ignore_duration]
-                                        for k in expired:
-                                            del self._recent_commands[k]
-                                    
+                                    await self._process_sse_event(event_data)
                                     event_data = {}
                                 continue
-                            
-                            # Parse SSE field
-                            if ':' in decoded:
-                                field, _, value = decoded.partition(':')
+
+                            if ":" in decoded:
+                                field, _, value = decoded.partition(":")
                                 field = field.strip()
                                 value = value.strip()
-                                
-                                if field == 'data':
-                                    # Parse JSON data
+
+                                if field == "data":
                                     try:
                                         data = json.loads(value)
                                         event_data.update(data)
                                     except json.JSONDecodeError:
                                         pass
-                                elif field == 'event':
-                                    event_data['event'] = value
-                                elif field == 'id':
-                                    event_data['id'] = value
-                        
-                        except Exception as err:
+                                elif field in ("event", "id"):
+                                    event_data[field] = value
+
+                        except Exception as err:  # noqa: BLE001
                             LOGGER.debug("Error processing SSE line: %s", err)
-            
+
             except asyncio.CancelledError:
                 LOGGER.info("SSE listener cancelled")
                 break
-            
-            except Exception as err:
+
+            except Exception as err:  # noqa: BLE001
                 if not self._stop_sse:
                     LOGGER.warning(
                         "SSE connection error: %s (retrying in %s seconds)",
                         err,
-                        retry_delay
+                        retry_delay,
                     )
                     await asyncio.sleep(retry_delay)
-        
+
         LOGGER.info("SSE listener stopped")
+
+    async def _process_sse_event(self, event_data: dict) -> None:
+        """Process a single parsed SSE event from openHAB.
+
+        For ItemStateChangedEvent / ItemStateUpdatedEvent:
+          1. Try to update the item state directly in self.data (no API call).
+          2. Call async_set_updated_data() so all HA entity listeners fire
+             immediately.
+          3. Only fall back to a debounced full API refresh when the item is
+             unknown or the payload cannot be parsed.
+
+        For ItemCommandEvent:
+          Record the item name so echo state events can be suppressed.
+        """
+        import time
+
+        event_type = event_data.get("type", "")
+        topic = event_data.get("topic", "")
+
+        # Extract item name from topic, e.g. "openhab/items/MySwitch/statechanged"
+        parts = topic.split("/")
+        item_name = parts[-2] if len(parts) >= 2 and "items/" in topic else None
+
+        # --- Command tracking (echo suppression) ---
+        if event_type == "ItemCommandEvent" and item_name:
+            self._recent_commands[item_name] = time.time()
+            LOGGER.debug(
+                "SSE command recorded for %s (echo suppression active for %.1fs)",
+                item_name,
+                self._command_ignore_duration,
+            )
+            return  # Commands do not carry the resulting state; ignore.
+
+        # --- State change / update events ---
+        if event_type in ("ItemStateChangedEvent", "ItemStateUpdatedEvent") and item_name:
+            # Suppress echo events right after a command from HA
+            cmd_time = self._recent_commands.get(item_name)
+            if cmd_time and (time.time() - cmd_time) < self._command_ignore_duration:
+                LOGGER.debug(
+                    "SSE echo suppressed for %s (%s after command)",
+                    item_name,
+                    event_type,
+                )
+                return
+
+            payload_str = event_data.get("payload", "")
+
+            if payload_str and self._update_item_from_sse_payload(item_name, payload_str):
+                # Success: push updated data to all entity listeners immediately.
+                # This is the "Option B" fast path - no API call, true real-time.
+                self.async_set_updated_data(self.data)
+            else:
+                # Fallback: item not yet loaded or payload unparseable.
+                # Trigger a debounced full API refresh.
+                LOGGER.debug(
+                    "SSE direct update failed for %s - falling back to API refresh",
+                    item_name,
+                )
+                await self._refresh_debouncer.async_call()
+
+        # Housekeeping: remove expired command timestamps
+        if self._recent_commands:
+            now = time.time()
+            expired = [
+                k
+                for k, v in self._recent_commands.items()
+                if (now - v) > self._command_ignore_duration
+            ]
+            for k in expired:
+                del self._recent_commands[k]
+
+    # ------------------------------------------------------------------
+    # Shutdown
+    # ------------------------------------------------------------------
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and stop SSE listener."""
         LOGGER.info("Shutting down openHAB coordinator")
         self._stop_sse = True
-        
-        # Cancel debouncer - async_shutdown() returns None, don't await it
+
         if self._refresh_debouncer is not None:
             self._refresh_debouncer.async_shutdown()
-        
-        # Cancel SSE listener task
+
         if self._sse_listener_task and not self._sse_listener_task.done():
             self._sse_listener_task.cancel()
             try:
                 await self._sse_listener_task
             except asyncio.CancelledError:
                 pass
-        
-        # Close session
+
         if self._sse_session:
             await self._sse_session.close()
             self._sse_session = None
 
+    # ------------------------------------------------------------------
+    # Coordinator data fetch (polling path - only active before SSE connects)
+    # ------------------------------------------------------------------
+
     async def _async_update_data(self) -> dict[str, Any]:
-        """Update data via library."""
-        # Skip polling if SSE is active - SSE provides real-time updates
-        if self._sse_started:
-            LOGGER.debug("Skipping polling - SSE is active")
-            return self.data if self.data else {}
-        
+        """Update data via library.
+
+        Once SSE is active this method is no longer called by the scheduler
+        (update_interval is set to None). It may still be invoked explicitly
+        via async_request_refresh() as a fallback (e.g. on SSE reconnect).
+        """
         try:
             if self.version is None or len(self.version) == 0:
                 self.version = await self.api.async_get_version()
 
             items = await self.api.async_get_items()
             self.is_online = bool(items)
-            
-            # Debug logging for item count
-            LOGGER.info(f"Coordinator fetched {len(items)} items from openHAB")
-            
-            # Count items by type
-            item_types = {}
-            items_with_none_type = []
+
+            LOGGER.info("Coordinator fetched %d items from openHAB", len(items))
+
+            # Log item type distribution for debugging
+            item_types: dict = {}
+            items_with_none_type: list = []
             for item_name, item in items.items():
                 item_type = item.type_
-                if item_type not in item_types:
-                    item_types[item_type] = 0
-                item_types[item_type] += 1
-                
-                # Track items with None type for debugging
+                item_types[item_type] = item_types.get(item_type, 0) + 1
                 if item_type is None:
-                    group_type = getattr(item, 'groupType', 'NO_GROUPTYPE')
-                    items_with_none_type.append(f"{item_name} ({type(item).__name__}, groupType={group_type})")
-            
-            LOGGER.info(f"Item types distribution: {item_types}")
-            
+                    group_type = getattr(item, "groupType", "NO_GROUPTYPE")
+                    items_with_none_type.append(
+                        f"{item_name} ({type(item).__name__}, groupType={group_type})"
+                    )
+
+            LOGGER.info("Item types distribution: %s", item_types)
+
             if items_with_none_type:
-                LOGGER.warning(f"Items with None type (first 10): {items_with_none_type[:10]}")
-            
+                LOGGER.warning(
+                    "Items with None type (first 10): %s",
+                    items_with_none_type[:10],
+                )
+
             # Start SSE listener after first successful fetch
             if items and not self._sse_started:
                 self._start_sse_after_first_refresh()
-            
+
             return items
 
         except ApiClientException as exception:
