@@ -103,7 +103,7 @@ class OpenHABFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             schema = {
                 vol.Required(
                     CONF_AUTH_TOKEN, default=user_input.get(CONF_AUTH_TOKEN, "")
-                ): cv.string,  # cv.matches_regex(r"^(oh)\.(.+)\.(.+)$"),
+                ): cv.string,  # cv.matches_regex(r"^(oh)\\.(.+)\\.(.+)$"),
             }
 
         return self.async_show_form(
@@ -144,8 +144,12 @@ class OpenHABOptionsFlowHandler(config_entries.OptionsFlow):
     """openHAB config flow options handler."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry):
-        """Initialize HACS options flow."""
-        self.config_entry = config_entry
+        """Initialize openHAB options flow.
+
+        Note: do NOT assign self.config_entry here - HA sets it automatically
+        via the parent class. Explicit assignment was deprecated in HA 2025.12
+        and removed in HA 2026.x (see bob-tm/ha-openhab#11).
+        """
         self.options = dict(config_entry.options)
 
     async def async_step_init(self, user_input=None):  # pylint: disable=unused-argument
