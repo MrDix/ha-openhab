@@ -14,7 +14,7 @@ For these devices no external openHAB setup is needed anymore.
 # 2025/2026: Work by [MrDix](https://github.com/MrDix/ha-openhab)
 * Fix NotImplementedError when comparing DateTimeItem objects ([#1](https://github.com/MrDix/ha-openhab/issues/1)/[#31](https://github.com/kubawolanin/ha-openhab/issues/31))  
   Resolved by changing comparison from `!= None` to `is not None` in entity.py to avoid triggering the `__ne__` operator on DateTimeItem objects
-* Add SSE support for real-time updates from openHAB ([#2](https://github.com/MrDix/ha-openhab/issues/2)/[28](https://github.com/kubawolanin/ha-openhab/issues/28))  
+* Add SSE support for real-time updates from openHAB ([#2](https://github.com/MrDix/ha-openhab/issues/2)/[#28](https://github.com/kubawolanin/ha-openhab/issues/28))  
   Implemented Server-Sent Events listener for real-time state synchronization, reducing delay from 15+ seconds to ~0ms via direct state injection
 * Fix SSE state changes not reflected in Home Assistant ([#4](https://github.com/MrDix/ha-openhab/issues/4))  
   Direct state injection via `_update_item_from_sse_payload()`, echo suppression via `track_ha_command()`, polling re-enabled on SSE failure
@@ -114,7 +114,7 @@ If you want to contribute to this please read the [Contribution guidelines](CONT
 [openhab]: https://openhab.org
 [buymecoffee]: https://www.buymeacoffee.com/kubawolanin
 [buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
-[commits-shield]: https://img.shields.io/github/commit-activity/y/kubawolanin/ha-openhab.svg?style=for-the-badge
+[commits-shield]: https://img.shields.io/github/commit-activity/y/MrDix/ha-openhab.svg?style=for-the-badge
 [commits]: https://github.com/MrDix/ha-openhab/commits/master
 [hacs]: https://github.com/ludeeus/hacs
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
