@@ -11,13 +11,21 @@ Fix GitHub issue link ([#23](https://github.com/kubawolanin/ha-openhab/issues/23
 For DeviReg climate there is a [new Home Assistant Addon](https://github.com/bob-tm/ha-devireg-mqtt-addon).  
 For these devices no external openHAB setup is needed anymore.
 
-# 2025: Work by [MrDix](https://github.com/MrDix/ha-openhab)
+# 2025/2026: Work by [MrDix](https://github.com/MrDix/ha-openhab)
 * Fix NotImplementedError when comparing DateTimeItem objects ([#1](https://github.com/MrDix/ha-openhab/issues/1)/[#31](https://github.com/kubawolanin/ha-openhab/issues/31))  
   Resolved by changing comparison from `!= None` to `is not None` in entity.py to avoid triggering the `__ne__` operator on DateTimeItem objects
-* Add SSE support for real-time updates from openHAB ([#2](https://github.com/MrDix/ha-openhab/issues/2)/[28](https://github.com/kubawolanin/ha-openhab/issues/28))  
-  Implemented Server-Sent Events listener for real-time state synchronization, reducing delay from 15+ seconds to ~0.5-1 second
+* Add SSE support for real-time updates from openHAB ([#2](https://github.com/MrDix/ha-openhab/issues/2)/[#28](https://github.com/kubawolanin/ha-openhab/issues/28))  
+  Implemented Server-Sent Events listener for real-time state synchronization, reducing delay from 15+ seconds to ~0ms via direct state injection
+* Fix SSE state changes not reflected in Home Assistant ([#4](https://github.com/MrDix/ha-openhab/issues/4))  
+  Direct state injection via `_update_item_from_sse_payload()`, echo suppression via `track_ha_command()`, polling re-enabled on SSE failure
 * Fix deprecated constant imports for Home Assistant 2025.10+ compatibility ([#3](https://github.com/MrDix/ha-openhab/issues/3))  
   Updated media_player.py and light.py to use enum-based constants instead of deprecated string constants
+* Fix deprecated `self.config_entry` assignment in OptionsFlow for HA 2025.12+ ([bob-tm#11](https://github.com/bob-tm/ha-openhab/issues/11))  
+  Removed explicit assignment in `OpenHABOptionsFlowHandler.__init__()`; HA sets it automatically via the parent class
+* Fix invalid entity ID for openHAB items with uppercase/special characters for HA 2026.2+ ([bob-tm#12](https://github.com/bob-tm/ha-openhab/issues/12))  
+  Item names are now passed through `slugify()` before being used as entity IDs; `unique_id` retains the original name
+* Loosen `python-openhab` version pin from `==2.17.1` to `>=2.17.1`  
+  Allows HA to install the latest compatible version instead of a pinned older release
 
 # openHAB custom integration for Home Assistant
 
@@ -106,8 +114,8 @@ If you want to contribute to this please read the [Contribution guidelines](CONT
 [openhab]: https://openhab.org
 [buymecoffee]: https://www.buymeacoffee.com/kubawolanin
 [buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
-[commits-shield]: https://img.shields.io/github/commit-activity/y/kubawolanin/ha-openhab.svg?style=for-the-badge
-[commits]: https://github.com/bob-tm/ha-openhab/commits/master
+[commits-shield]: https://img.shields.io/github/commit-activity/y/MrDix/ha-openhab.svg?style=for-the-badge
+[commits]: https://github.com/MrDix/ha-openhab/commits/master
 [hacs]: https://github.com/ludeeus/hacs
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
 [discord]: https://discord.gg/Qa5fW2R
@@ -116,6 +124,6 @@ If you want to contribute to this please read the [Contribution guidelines](CONT
 [forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
 [forum]: https://community.home-assistant.io/
 [license-shield]: https://img.shields.io/github/license/kubawolanin/ha-openhab.svg?style=for-the-badge
-[maintenance-shield]: https://img.shields.io/badge/maintainer-Kuba%20Wolanin%20%40kubawolanin-blue.svg?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/bob-tm/ha-openhab.svg?style=for-the-badge
-[releases]: https://github.com/bob-tm/ha-openhab/releases
+[maintenance-shield]: https://img.shields.io/badge/maintainer-MrDix-blue.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/MrDix/ha-openhab.svg?style=for-the-badge
+[releases]: https://github.com/MrDix/ha-openhab/releases
