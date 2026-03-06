@@ -5,7 +5,7 @@ from typing import Any
 import asyncio
 import aiohttp
 import json
-from datetime import timedelta
+import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -33,12 +33,17 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         self._sse_session = None
         self._sse_started = False
 
-        # Track recent commands to avoid processing echo events
-        self._recent_commands = {}  # {item_name: timestamp}
-        self._command_ignore_duration = 2.0  # Ignore state events for 2s after command
+        # Echo suppression: tracks commands explicitly sent by this integration.
+        # Populated via track_ha_command() which entity platforms call right
+        # before they send a command through the HA REST API.  SSE-based
+        # ItemCommandEvents are NOT used for this because the SSE stream does
+        # not expose a reliable source field to distinguish HA-originated
+        # commands from external ones (openHAB rules, other integrations, etc.).
+        self._recent_commands: dict[str, float] = {}
+        self._command_ignore_duration = 2.0  # seconds
 
         # Fallback debouncer: only used when direct SSE state update fails
-        # (unknown item, parse error) to trigger a full API refresh
+        # (unknown item, parse error) to trigger a full API refresh.
         self._refresh_debouncer = Debouncer(
             hass,
             LOGGER,
@@ -47,7 +52,8 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
             function=self._async_refresh_debounced,
         )
 
-        # Start with normal polling; disabled once SSE connects successfully
+        # Start with normal polling; disabled inside _listen_sse_events() only
+        # after a confirmed successful SSE connection (HTTP 200).
         super().__init__(
             hass,
             logger=LOGGER,
@@ -60,26 +66,44 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
 
     # ------------------------------------------------------------------
+    # Public API for entity platforms
+    # ------------------------------------------------------------------
+
+    def track_ha_command(self, item_name: str) -> None:
+        """Record that this integration just sent a command for item_name.
+
+        Call this immediately before sending a command via the openHAB REST API
+        so that the resulting ItemStateChangedEvent/ItemStateUpdatedEvent from
+        the SSE stream can be identified as an echo and suppressed.
+        """
+        self._recent_commands[item_name] = time.time()
+        LOGGER.debug(
+            "Echo suppression armed for %s (%.1fs window)",
+            item_name,
+            self._command_ignore_duration,
+        )
+
+    # ------------------------------------------------------------------
     # SSE startup
     # ------------------------------------------------------------------
 
     def _start_sse_after_first_refresh(self) -> None:
-        """Start SSE listener after first successful refresh."""
+        """Start SSE listener task after first successful data refresh.
+
+        Polling is NOT disabled here; it is disabled inside _listen_sse_events()
+        only after a confirmed HTTP 200 response from the SSE endpoint so that
+        polling continues as a fallback if the SSE handshake fails.
+        """
         if not self._sse_started and self.api._base_url:
             self._sse_started = True
             self._sse_listener_task = self.hass.async_create_background_task(
                 self._listen_sse_events(),
                 name="openhab_sse_listener",
             )
-            LOGGER.info("SSE listener started for real-time updates")
-
-            # Disable polling - SSE handles all state updates
-            self.update_method = None
-            self.update_interval = None
-            LOGGER.info("Polling disabled - SSE is the sole update source")
+            LOGGER.info("SSE listener task created")
 
     # ------------------------------------------------------------------
-    # Direct state injection (Option B core)
+    # Direct state injection
     # ------------------------------------------------------------------
 
     def _update_item_from_sse_payload(self, item_name: str, payload_str: str) -> bool:
@@ -88,6 +112,17 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         Returns True when the item was found and updated successfully.
         No API call is made; self.data is mutated in-place and callers
         must follow up with async_set_updated_data(self.data).
+
+        Exception handling policy for item._parse_value():
+        - NotImplementedError / AttributeError: item type has no _parse_value
+          implementation (e.g. bare GroupItem); store raw string as graceful
+          degradation and return True so the caller does NOT fall back to a
+          full API refresh (the entity will display the raw value).
+        - ValueError / TypeError: the value string is present but malformed for
+          this item type; propagate to the outer handler so the method returns
+          False and the fallback API refresh runs.
+        - Any other Exception from json.loads / payload parsing: caught by the
+          outer handler; return False to trigger the fallback refresh.
         """
         if not self.data or item_name not in self.data:
             return False
@@ -103,13 +138,13 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
 
             try:
                 # Each Item subclass implements _parse_value() to convert the
-                # raw string to the typed _state representation (OnOffType,
-                # float, datetime, …).
+                # raw string to the typed _state representation.
                 item._state = item._parse_value(raw_value)
-            except (NotImplementedError, AttributeError, ValueError, TypeError):
-                # For item types without _parse_value (e.g. bare GroupItem),
-                # store the raw string so at least something is updated.
+            except (NotImplementedError, AttributeError):
+                # Item type has no _parse_value; store raw string as fallback.
                 item._state = raw_value
+            # ValueError / TypeError are intentionally NOT caught here so they
+            # propagate to the outer except and cause this method to return False.
 
             LOGGER.debug("SSE direct update: %s = %s", item_name, raw_value)
             return True
@@ -165,7 +200,16 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
                         await asyncio.sleep(retry_delay)
                         continue
 
-                    LOGGER.info("SSE connection established")
+                    # Connection confirmed - disable polling now that SSE is live.
+                    if self.update_interval is not None:
+                        self.update_method = None
+                        self.update_interval = None
+                        LOGGER.info(
+                            "SSE connection established - polling disabled, "
+                            "SSE is the sole update source"
+                        )
+                    else:
+                        LOGGER.info("SSE reconnected")
 
                     # After a reconnect, fetch fresh data from the API to catch
                     # any state changes that occurred while SSE was disconnected.
@@ -226,17 +270,16 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         """Process a single parsed SSE event from openHAB.
 
         For ItemStateChangedEvent / ItemStateUpdatedEvent:
-          1. Try to update the item state directly in self.data (no API call).
-          2. Call async_set_updated_data() so all HA entity listeners fire
-             immediately.
-          3. Only fall back to a debounced full API refresh when the item is
-             unknown or the payload cannot be parsed.
+          1. Check echo suppression (only for commands tracked via track_ha_command).
+          2. Try to update the item state directly in self.data (no API call).
+          3. Call async_set_updated_data() so all HA entity listeners fire immediately.
+          4. Fall back to a debounced full API refresh when the item is unknown
+             or the payload cannot be parsed.
 
-        For ItemCommandEvent:
-          Record the item name so echo state events can be suppressed.
+        ItemCommandEvent is intentionally ignored here because the SSE stream
+        does not expose a reliable source field; echo suppression is handled
+        exclusively through track_ha_command().
         """
-        import time
-
         event_type = event_data.get("type", "")
         topic = event_data.get("topic", "")
 
@@ -244,23 +287,16 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         parts = topic.split("/")
         item_name = parts[-2] if len(parts) >= 2 and "items/" in topic else None
 
-        # --- Command tracking (echo suppression) ---
-        if event_type == "ItemCommandEvent" and item_name:
-            self._recent_commands[item_name] = time.time()
-            LOGGER.debug(
-                "SSE command recorded for %s (echo suppression active for %.1fs)",
-                item_name,
-                self._command_ignore_duration,
-            )
-            return  # Commands do not carry the resulting state; ignore.
+        if not item_name:
+            return
 
         # --- State change / update events ---
-        if event_type in ("ItemStateChangedEvent", "ItemStateUpdatedEvent") and item_name:
-            # Suppress echo events right after a command from HA
+        if event_type in ("ItemStateChangedEvent", "ItemStateUpdatedEvent"):
+            # Suppress echo events for commands explicitly sent by this integration.
             cmd_time = self._recent_commands.get(item_name)
             if cmd_time and (time.time() - cmd_time) < self._command_ignore_duration:
                 LOGGER.debug(
-                    "SSE echo suppressed for %s (%s after command)",
+                    "SSE echo suppressed for %s (%s)",
                     item_name,
                     event_type,
                 )
@@ -270,11 +306,9 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
 
             if payload_str and self._update_item_from_sse_payload(item_name, payload_str):
                 # Success: push updated data to all entity listeners immediately.
-                # This is the "Option B" fast path - no API call, true real-time.
                 self.async_set_updated_data(self.data)
             else:
-                # Fallback: item not yet loaded or payload unparseable.
-                # Trigger a debounced full API refresh.
+                # Fallback: item not yet loaded or payload malformed.
                 LOGGER.debug(
                     "SSE direct update failed for %s - falling back to API refresh",
                     item_name,
@@ -316,15 +350,15 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
             self._sse_session = None
 
     # ------------------------------------------------------------------
-    # Coordinator data fetch (polling path - only active before SSE connects)
+    # Coordinator data fetch (polling path - active until SSE connects)
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via library.
 
-        Once SSE is active this method is no longer called by the scheduler
-        (update_interval is set to None). It may still be invoked explicitly
-        via async_request_refresh() as a fallback (e.g. on SSE reconnect).
+        Polling is active until _listen_sse_events() disables it after a
+        confirmed SSE connection. After that this method may still be invoked
+        explicitly via async_request_refresh() as a fallback (e.g. on reconnect).
         """
         try:
             if self.version is None or len(self.version) == 0:
