@@ -395,6 +395,14 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
         Polling is active until _listen_sse_events() disables it after a
         confirmed SSE connection. After that this method may still be invoked
         explicitly via async_request_refresh() as a fallback (e.g. on reconnect).
+
+        All exceptions - including connection errors and timeouts - are caught
+        and re-raised as UpdateFailed so that async_config_entry_first_refresh()
+        converts them into ConfigEntryNotReady.  This causes HA to automatically
+        retry setup instead of marking the integration as permanently broken
+        (setup_error), which is the correct behaviour when openHAB is simply not
+        yet reachable at HA startup time (e.g. after a fast HACS-triggered restart
+        where openHAB needs a few extra seconds to come up).
         """
         try:
             if self.version is None or len(self.version) == 0:
@@ -433,3 +441,9 @@ class OpenHABDataUpdateCoordinator(DataUpdateCoordinator):
 
         except ApiClientException as exception:
             raise UpdateFailed(exception) from exception
+        except UpdateFailed:
+            raise
+        except Exception as exception:  # noqa: BLE001
+            raise UpdateFailed(
+                f"Unexpected error communicating with openHAB: {exception}"
+            ) from exception
