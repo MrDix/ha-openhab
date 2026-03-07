@@ -1,12 +1,12 @@
 """OpenHABEntity class"""
 from __future__ import annotations
 
+import re
 from typing import Any, List
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.util.slugify import slugify
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from openhab import items
@@ -15,6 +15,21 @@ from .const import ATTRIBUTION, DOMAIN, NAME, VERSION, LOGGER
 from .coordinator import OpenHABDataUpdateCoordinator
 from .icons_map import ICONS_MAP, ITEM_TYPE_MAP
 from .utils import strip_ip
+
+
+def _slugify(text: str) -> str:
+    """Convert text to a valid HA entity ID component.
+
+    Produces a lowercase string containing only [a-z0-9_].
+    Consecutive non-word characters are collapsed into a single underscore,
+    and leading/trailing underscores are stripped.
+
+    This avoids importing from homeassistant.util.slugify whose internal
+    module path changed in HA 2026.x.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug or "unknown"
+
 
 class OpenHABEntity(CoordinatorEntity):
     """Base openHAB entity."""
@@ -49,7 +64,7 @@ class OpenHABEntity(CoordinatorEntity):
         # HA 2026.2+ enforces strict entity ID validation and rejects raw
         # OpenHAB item names that contain uppercase letters or other characters
         # not permitted in entity IDs.
-        self.entity_id = f"{DOMAIN}.{self._nameid_prefix}{slugify(self.item.name)}"
+        self.entity_id = f"{DOMAIN}.{self._nameid_prefix}{_slugify(self.item.name)}"
 
         if self.item.unit_of_measure:
             self._attr_native_unit_of_measurement = str(self.item.unit_of_measure)
